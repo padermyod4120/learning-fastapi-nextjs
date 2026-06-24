@@ -1,10 +1,15 @@
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, Header, UploadFile, HTTPException, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+import jwt
 import os
 
 from dotenv import load_dotenv
 load_dotenv()
+
+SECRET_KEY = os.getenv("SECRET_KEY")
+ALGORITHM = os.getenv("ALGORITHM")
+
 
 app = FastAPI()
 app.add_middleware(
@@ -14,6 +19,25 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+def required_token(authorization: str = Header(None)) -> str:
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, 
+                            detail="Invalid token", 
+                            headers={"WWW-Authenticate": "Bearer"})
+    token = authorization.split(" ")[1]
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return payload.get('sub') or ""
+    except jwt.PyJWKError:
+        raise HTTPException(status_code=401, 
+                            detail="Invalid token Authentication", 
+                            headers={"WWW-Authenticate": "Bearer "})
+
+@app.get("/protected")
+async def protected(user: str = Depends(required_token)):
+    return {"message": f"Hello, {user}!"}
+
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 @app.post("/upload/")
@@ -55,8 +79,26 @@ async def update_customer(customer_id: int, customer: dict):
 async def delete_customer(customer_id: int):
     return {'customer_id': customer_id}
 
-
 @app.get("/env_values")
 async def get_env_value():
     secret_key = os.getenv("SECRET_KEY")
     return {"SECRET_KEY": secret_key}
+
+@app.post('/login')
+async def login(data: dict):
+    if data.get('username') == 'admin' and data.get('password') == '12345':
+        token = jwt.encode({"sub": data['username']}, SECRET_KEY, ALGORITHM)
+        return {"access_token": token}
+    else:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    
+@app.get('/me')
+async def me(authorization: str = Header(None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Invalid token")
+    token = authorization.split(" ")[1]
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return {'user': payload.get('sub')}
+    except jwt.PyJWKError:
+        raise HTTPException(status_code=401, detail="Invalid token")
