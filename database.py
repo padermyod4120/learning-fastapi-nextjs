@@ -30,6 +30,7 @@ tb_book = Table(
     Column("id", Integer, primary_key=True, autoincrement=True),
     Column("name", String, nullable=False),
     Column("price", Float, nullable=False),
+    Column('remark', String, nullable=True)
 )
 
 metadata.create_all(engine)
